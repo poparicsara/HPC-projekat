@@ -23,7 +23,7 @@ def bcast(data, comm, tag, comm_num):
         for dest in range(1, size):
             comm.send(data, dest, tag)
     elif rank != MPI.UNDEFINED:
-        comm.recv(source=root, tag=tag)
+        data = comm.recv(source=root, tag=tag)
         data = pickle.loads(data)
         print('COMM: ', comm_num, 'rank: ', rank, ', message: ', data)
 
@@ -69,7 +69,10 @@ def sort_partitions(partitions):
     return partitions
 
 
-def get_partitions(partitions):
+def get_partitions(partitions, world_size):
+
+    if partitions == '':
+        return []
 
     partitions = partitions[1:len(partitions)-1]    # Get rid of [ ]
     if partitions == '':
@@ -78,12 +81,19 @@ def get_partitions(partitions):
     partitions_str = partitions.split(',')
     partitions = []
     for part in partitions_str:
-        partitions.append(int(part))
+        p = int(part)
+        if p > 0 and p < world_size:
+            partitions.append(int(part))
 
     return sort_partitions(partitions)
 
 
 def main():
+
+    # WORLD COMMUNICATOR
+    world_comm = MPI.COMM_WORLD
+    world_rank = world_comm.Get_rank()
+    world_size = world_comm.Get_size()
 
     # PARTITIONS
 
@@ -93,18 +103,13 @@ def main():
     partitions3 = []
 
     if len(sys.argv) > 1:
-        partitions0 = get_partitions(sys.argv[1])
+        partitions0 = get_partitions(sys.argv[1], world_size)
     if len(sys.argv) > 2:
-        partitions1 = get_partitions(sys.argv[2])
+        partitions1 = get_partitions(sys.argv[2], world_size)
     if len(sys.argv) > 3:
-        partitions2 = get_partitions(sys.argv[3])
+        partitions2 = get_partitions(sys.argv[3], world_size)
     if len(sys.argv) > 4:
-        partitions3 = get_partitions(sys.argv[4])
-
-
-    # WORLD COMMUNICATOR
-    world_comm = MPI.COMM_WORLD
-    world_rank = world_comm.Get_rank()
+        partitions3 = get_partitions(sys.argv[4], world_size)
 
     # COMMUNICATORS
     comm0 = MPI.UNDEFINED
@@ -117,6 +122,8 @@ def main():
     rank1 = MPI.UNDEFINED
     rank2 = MPI.UNDEFINED
     rank3 = MPI.UNDEFINED
+
+    last_received = -1
 
     # TOPIC 0
 
@@ -143,7 +150,7 @@ def main():
         rank3 = comm3.Get_rank()
 
     # Imitation of data stream
-    for i in range(0, 10):
+    for i in range(1, 11):
         data = i
         root = 0
         sent = False
@@ -151,25 +158,32 @@ def main():
         if (i % 3) == 0 and len(partitions0) > 1:
             if rank0 != MPI.UNDEFINED:
                 comm0.bcast(data, root)
+                last_received = data
                 print('Rank: ', world_rank, ', message: ', data)
             sent = True
 
         if (i % 5) == 0 and len(partitions1) > 1:
             if rank1 != MPI.UNDEFINED:
                 comm1.bcast(data, root)
+                last_received = data
                 print('Rank: ', world_rank, ', message: ', data)
             sent = True
 
         if is_prime(i) and len(partitions2) > 1:
             if rank2 != MPI.UNDEFINED:
                 comm2.bcast(data, root)
+                last_received = data
                 print('Rank: ', world_rank, ', message: ', data)
             sent = True
 
         if sent == False and len(partitions3) > 1:
             if rank3 != MPI.UNDEFINED:
                 comm3.bcast(data, root)
+                last_received = data
                 print('Rank: ', world_rank, ', message: ', data)
+
+    if last_received != -1:
+        print('Rank: ', world_rank, ', last receved message: ', last_received)
 
 
 if __name__ == '__main__':
